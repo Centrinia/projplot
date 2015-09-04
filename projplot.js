@@ -2,6 +2,7 @@
 
 "use strict";
 
+var DECIMAL_PLACES=3;
 
 function get_mousecoord(event) {
     var elem = event.target || event.srcElement;
@@ -19,6 +20,23 @@ function vectorDivide(a, b) {
     return c;
 }
 
+function cross(a, b) {
+    var c = [0,0,0];
+    c[0] = a[1] * b[2] - a[2] * b[1];
+    c[1] = - (a[0] * b[2] - a[2] * b[0]);
+    c[2] = a[0] * b[1] - a[1] * b[0];
+    
+    return c;
+}
+function quaternionApply(q, v) {
+// v +  2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
+    return add(v, scale(2, 
+        cross(
+            add(cross(v, q.slice(1)), scale(q[0], v)),
+            q.slice(1)
+            )
+        ));
+}
 /* The basis vectors of quaternions are [1, e3*e2, e1*e3, e2*e1] = [1, -e3*e2,e1*e3, -e2*e1] */
 function quaternionMultiply(a, b) {
     var c = [0,0,0,0];
@@ -153,9 +171,48 @@ window.onload = function () {
         gl.uniform4fv(shaderProgram.u_rotation, rotQuat(rotationQuaternion));
         gl.uniform1f(shaderProgram.u_displacement, u_displacement);
 
-        quatSpan.innerHTML = showQuaternion(rotationQuaternion);
+        printCoordinateChange(rotationQuaternion);
 
         return shaderProgram;
+    };
+    var printCoordinateChange = function(quat) {
+        var vars = ['x','y','z'];
+        var str = '<p>';
+        /* The accuracy of the coefficient display. */
+        for(var i=0;i<3;i++) {
+            var substr = vars[i] + '\' = ';
+            var p = [0,0,0];
+            p[i] = 1;
+            var q = quaternionApply(quat, p);
+            for(var j=0;j<3;j++) {
+                q[j] = q[j].toFixed(DECIMAL_PLACES);
+            }
+            var firstElement = true;
+            for(var j=0;j<3;j++) {
+                var t;
+                if(q[j] < 0) {
+                    if(firstElement) {
+                        substr += '-';
+                    } else {
+                        substr += ' - ';
+                    }
+                } else if(!firstElement && q[j] != 0) {
+                    substr += ' + ';
+                }
+                if(q[j] != 0) {
+                    var t = Math.abs(q[j]);
+                    if(t == 1) {
+                        substr += vars[j];
+                    } else {
+                        substr += t.toString() + '*' + vars[j];
+                    }
+                    firstElement = false;
+                }
+            }
+            str += substr + '<br/>\n';
+        }
+        str += '</p>';
+        quatSpan.innerHTML = str;
     };
 
     var rotQuat = function(q) {
@@ -164,7 +221,10 @@ window.onload = function () {
     var rotationQuaternion = [0,0,0,1];
     var u_displacement = -3.0;
 
+
     var quatSpan = document.getElementById('quat');
+    printCoordinateChange(rotationQuaternion);
+
     var showQuaternion = function (q) {
         return q;
     };
@@ -176,6 +236,7 @@ window.onload = function () {
         return body;
     };
     var equationOption = document.getElementById('equation');
+    var modeButton = document.getElementById('mode-button');
     equationOption.onchange = function (event) {
         var fs_name;
         if(modeButton.innerHTML.trim() == 'Projective') {
@@ -187,8 +248,12 @@ window.onload = function () {
         queue_redraw();
     };
 
-    var shader = init_gl('shader-fragment',get_equation());
-
+    var shader;
+    if(modeButton.innerHTML.trim() == 'Projective') {
+        shader = init_gl('shader-fragment', get_equation());
+    } else {
+        shader = init_gl('shader-fragment-affine',get_equation());
+    }
     var frame_interval = 1000.0 / 30;
     var redrawing = false;
     var redraw = function() {
@@ -204,6 +269,9 @@ window.onload = function () {
             }, frame_interval);
         }
     };
+
+    var locationSpan = document.getElementById('cursor-location');
+    
     queue_redraw();
 
     var sphere_center = [0,0,0];
@@ -228,18 +296,43 @@ window.onload = function () {
             return null;
         }
     };
-    var makeVector = function(c) {
-        var v = [0,0,0];
-        v[0] = c[0];
-        v[1] = c[1];
-        v[2] = u_displacement;
-        normalize(v);
-
-        return v;
+    var makeVector = function(coords) {
+        if(modeButton.innerHTML.trim() == 'Projective') {
+            return intersect_sphere(coords);
+        } else {
+            return [-coords[0]*u_displacement, -coords[1]*u_displacement, -1];
+        }
     }
+    var printCursorLocation = function(quat,p) {
+        var str;
+        if(p) {
+            var q = quaternionApply(quat, p);
+            str = '[ ';
+            var t = 1;
+            for(var i=q.length-1;i>=0;i--) {
+                if(q[i] != 0.0) {
+                    t = q[i];
+                    break;
+                }
+            }
+            for(i=0;i<q.length;i++) {
+                var qi = (q[i] / t).toFixed(DECIMAL_PLACES);
+                str += qi.toString();
+                if(i < q.length-1) {
+                    str += ' : ';
+                } else {
+                    str += ' ]';
+                }
+            }
+        } else {
+            str = '';
+        }
+        locationSpan.innerHTML = str;
+    };
     var previousVector = null;
     var onmove = function(coords) {
-        var p = intersect_sphere(coords);
+        var p = makeVector(coords);
+        printCursorLocation(rotationQuaternion, p);
         if(p) {
             p = sub(p, sphere_center);
 
@@ -249,7 +342,7 @@ window.onload = function () {
             rotationQuaternion = normalize(rotationQuaternion);
 
             gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
-            quatSpan.innerHTML = showQuaternion(rotationQuaternion);
+            printCoordinateChange(rotationQuaternion);
 
             queue_redraw();
 
@@ -258,6 +351,7 @@ window.onload = function () {
         } else {
             previousVector = null;
         }
+        event.preventDefault();
     }
 	canvas.ontouchmove = function(event) {
         if(previousVector) {
@@ -299,27 +393,33 @@ window.onload = function () {
 
     canvas.ontouchend = function(event) {
         previousVector = null;
+        printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
     canvas.onmouseleave = function(event) {
         previousVector = null;
+        printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
     canvas.ontouchcancel = function(event) {
         previousVector = null;
+        printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
     canvas.ontouchleave = function(event) {
         previousVector = null;
+        printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
     canvas.onmouseup = function(event) {
         previousVector = null;
+        printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
 
     var ondown = function(coords) {
-        previousVector = intersect_sphere(coords);
+        previousVector = makeVector(coords);
+        printCursorLocation(rotationQuaternion, previousVector);
         if(previousVector) {
             previousVector = sub(previousVector, sphere_center);
         }
@@ -343,11 +443,10 @@ window.onload = function () {
     planeOption.onclick = function(event) {
         rotationQuaternion = normalize(planeQuats[planeOption[planeOption.selectedIndex].value]);
         gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
-        quatSpan.innerHTML = showQuaternion(rotationQuaternion);
+        printCoordinateChange(rotationQuaternion);
         queue_redraw();
     };
     planeOption.onclick(null);
-    var modeButton = document.getElementById('mode-button');
     modeButton.onclick = function(event) {
         if(modeButton.innerHTML.trim() == 'Projective') {
             shader = init_gl('shader-fragment-affine',get_equation());
@@ -359,5 +458,6 @@ window.onload = function () {
             modeButton.innerHTML = 'Projective';
         }
     };
+
 };
 

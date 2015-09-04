@@ -25,31 +25,17 @@
 
                 /* The color is determined by the sign of the function value. */
                 y = y > 0.0 ? 0.65 : 0.15;
-
                 /* Handle the axes. */
-                vec4 other = vec4(0.0, 0.0, 0.0, 1.0);
-                float TOL = 1e-2;
-                if(abs(p.y) < TOL) {
-                    other.r = 1.0;
-                }
-                if(abs(p.x) < TOL) {
-                    other.g = 1.0;
-                }
-                if(abs(p.z) < TOL) {
-                    other.b = 1.0;
-                }
+                vec4 grid = vec4(0.0, 0.0, 0.0, 1.0);
 
+                float TOL = 3e-2;
+                grid.rgb = step(-TOL, -abs(p.yxz));
 
                 vec2 q = p.xy / p.z;
                 float TOL2 = 7e-3;
-                if(abs(mod(q.y+0.5,1.0)-0.5) < TOL2) {
-                    other.r += 0.2;
-                }
-                if(abs(mod(q.x+0.5,1.0)-0.5) < TOL2) {
-                    other.g += 0.2;
-                }
+                grid.gr += step(-TOL2, -abs(mod(q.xy+0.5,1.0)-0.5)) * 0.2;
 
-                gl_FragColor = vec4(y, y, y, 1.0) + other;
+                gl_FragColor = vec4(y, y, y, 1.0) + grid;
             }
         </script>
         <script id="shader-fragment" type="x-shader/x-fragment">
@@ -101,40 +87,21 @@
                     y += y2;
 
                     /* Handle the axes. */
-                    vec4 other = vec4(0.0, 0.0, 0.0, 1.0);
+
+                    vec4 grid = vec4(0.0, 0.0, 0.0, 1.0);
+
                     float TOL = 1e-2;
-                    if(abs(p.y) < TOL) {
-                        other.r = 1.0;
-                    }
-                    if(abs(p.x) < TOL) {
-                        other.g = 1.0;
-                    }
-                    if(abs(p.z) < TOL) {
-                        other.b = 1.0;
-                    }
+                    grid.rgb = step(-TOL, -abs(p.yxz));
+                    grid.rgb += step(-TOL, -abs(p2.yxz)) * 0.5;
 
-                    if(abs(p2.y) < TOL) {
-                        other.r += 0.5;
-                    }
-                    if(abs(p2.x) < TOL) {
-                        other.g += 0.5;
-                    }
-                    if(abs(p2.z) < TOL) {
-                        other.b += 0.5;
-                    }
- 
-                vec2 q = p.xy / p.z;
-                float TOL2 = 7e-3;
-                if(abs(mod(q.y+0.5,1.0)-0.5) < TOL2) {
-                    other.r += 0.2;
-                }
-                if(abs(mod(q.x+0.5,1.0)-0.5) < TOL2) {
-                    other.g += 0.2;
-                }
+                    float TOL2 = 7e-3;
+                    vec2 q = p.xy / p.z;
+                    grid.gr += step(-TOL2, -abs(mod(q.xy+0.5,1.0)-0.5)) * 0.2;
+                    vec2 q2 = p2.xy / p2.z;
+                    grid.gr += step(-TOL2, -abs(mod(q2.xy+0.5,1.0)-0.5)) * 0.1;
 
+                    gl_FragColor = vec4(y, y, y, 1.0) + grid;
 
-
-                    gl_FragColor = vec4(y, y, y, 1.0) + other;
                 } else {
                     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
                 }
@@ -152,13 +119,16 @@
     <body>
         <canvas id="canvas" width="1024" height="1024"></canvas>
         <br/>
-        <button id="mode-button">Projective</button>
+        Mode: <button id="mode-button">Affine</button>
         <br/>
         Equation:
         <select id='equation'>
             <option value='p.x*p.x-p.y*p.z'>x^2=y</option>
+            <option value='p.x*p.x+p.y*p.y-p.z*p.z'>x^2+y^2=1</option>
+            <option value='(p.x*p.x-p.y*p.z)*(p.x*p.x*p.x-p.x*p.z*p.z-p.y*p.y*p.z)'>(x^2-y)*(x^3-x-y^2)=0</option>
             <option value='p.x*p.x*p.x-p.x*p.z*p.z-p.y*p.y*p.z'>x^3-x=y^2</option>
             <option value='p.x*p.x*p.x-p.x*p.y*p.y-p.y*p.z*p.z'>x^3-x*y^2=y</option>
+            <option value='p.x*p.x*p.x*p.x-2.0*p.x*p.x*p.z*p.z+3.0*p.z*p.z*p.z*p.z-p.y*p.y*p.z*p.z'>x^4-2*x^2+3=y^2</option>
             <option value='p.x*p.x*p.x-3.0*p.x*p.z*p.z+2.0*p.z*p.z*p.z-p.y*p.y*p.z'>x^3-3*x+2=y^2</option>
             <option value='p.x*p.x*p.x*p.y+p.y*p.y*p.y*p.z+p.z*p.z*p.z*p.x'>x^3*y+y^3*z+z^3*x=0</option>
         </select>
@@ -172,6 +142,11 @@
         <br/>
         Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         <br/>
-        <span id='quat'></span>
+        <p>
+        Cursor location: <span id='cursor-location'></span>
+        </p>
+        <p>
+       Change of coordinates: <span id='quat'></span>
+        </p>
     </body>
 </html>
