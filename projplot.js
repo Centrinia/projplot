@@ -2,6 +2,7 @@
 
 "use strict";
 
+var FRAME_INTERVAL = 1000.0 / 30;
 var DECIMAL_PLACES=3;
 
 function get_mousecoord(event) {
@@ -36,6 +37,20 @@ function quaternionApply(q, v) {
             q.slice(1)
             )
         ));
+}
+function norm(a) {
+    var n = 0;
+    for(var i=0;i<a.length;i++) {
+        n += a[i] * a[i];
+    }
+    return Math.sqrt(n);
+}
+function quaternionInverse(a) {
+    var c = a.slice(0);
+    var n = dot(a,a);
+    c = scale(-1/(n*n), c);
+    c[0] = -c[0];
+    return c;
 }
 /* The basis vectors of quaternions are [1, e3*e2, e1*e3, e2*e1] = [1, -e3*e2,e1*e3, -e2*e1] */
 function quaternionMultiply(a, b) {
@@ -183,7 +198,7 @@ window.onload = function () {
             var substr = vars[i] + '\' = ';
             var p = [0,0,0];
             p[i] = 1;
-            var q = quaternionApply(quat, p);
+            var q = quaternionApply(quaternionInverse(quat), p);
             for(var j=0;j<3;j++) {
                 q[j] = q[j].toFixed(DECIMAL_PLACES);
             }
@@ -254,7 +269,6 @@ window.onload = function () {
     } else {
         shader = init_gl('shader-fragment-affine',get_equation());
     }
-    var frame_interval = 1000.0 / 30;
     var redrawing = false;
     var redraw = function() {
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -266,7 +280,7 @@ window.onload = function () {
             window.setTimeout(function() {
                 redraw();
                 redrawing = false;
-            }, frame_interval);
+            }, FRAME_INTERVAL);
         }
     };
 
@@ -310,7 +324,7 @@ window.onload = function () {
             str = '[ ';
             var t = 1;
             for(var i=q.length-1;i>=0;i--) {
-                if(q[i] != 0.0) {
+                if(q[i].toFixed(DECIMAL_PLACES) != 0.0) {
                     t = q[i];
                     break;
                 }
@@ -330,9 +344,9 @@ window.onload = function () {
         locationSpan.innerHTML = str;
     };
     var previousVector = null;
+    var printingCoordinateChange = false;
     var onmove = function(coords) {
         var p = makeVector(coords);
-        printCursorLocation(rotationQuaternion, p);
         if(p) {
             p = sub(p, sphere_center);
 
@@ -342,10 +356,15 @@ window.onload = function () {
             rotationQuaternion = normalize(rotationQuaternion);
 
             gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
-            printCoordinateChange(rotationQuaternion);
+            if(!printingCoordinateChange) {
+                printingCoordinateChange = true;
+                window.setTimeout(function() {
+                    printCoordinateChange(rotationQuaternion);
+                    printingCoordinateChange = false;
+                }, FRAME_INTERVAL);
+            }
 
             queue_redraw();
-
 
             previousVector = p;
         } else {
@@ -361,11 +380,21 @@ window.onload = function () {
         }
         event.preventDefault();
 	};
+    var printingCursorLocation = false;
 	canvas.onmousemove = function(event) {
+        var coords = get_mousecoord(event);
         if(previousVector) {
-            var coords = get_mousecoord(event);
-
             onmove(coords);
+        }
+        if(!printingCursorLocation) {
+            printingCursorLocation = true;
+            window.setTimeout(function () {
+                if(printingCursorLocation) {
+                    var p = makeVector(coords);
+                    printCursorLocation(rotationQuaternion, p);
+                    printingCursorLocation = false;
+                }
+            }, FRAME_INTERVAL);
         }
         event.preventDefault();
 	};
@@ -398,6 +427,7 @@ window.onload = function () {
     };
     canvas.onmouseleave = function(event) {
         previousVector = null;
+        printingCursorLocation = false;
         printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
@@ -413,7 +443,7 @@ window.onload = function () {
     };
     canvas.onmouseup = function(event) {
         previousVector = null;
-        printCursorLocation(rotationQuaternion, previousVector);
+        //printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
 
