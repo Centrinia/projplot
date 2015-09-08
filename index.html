@@ -43,6 +43,8 @@
         <script id="shader-fragment" type="x-shader/x-fragment">
             varying vec2 v_position;
             uniform vec4 u_rotation;
+            uniform vec3 u_center;
+            uniform float u_radius;
             uniform float u_displacement;
 
             /* Transform a vector using a quaternion. */
@@ -50,10 +52,6 @@
                 return v + 2.0 * cross(cross(v, q.xyz) + q.w * v, q.xyz);
             }
             void main() {
-                /* The sphere center. */
-                vec3 center = vec3(0.0, 0.0, 0.0);
-                /* The radius of the sphere. */
-                float radius = 1.00;
                 /* Some point in front of the viewpoint and on the view vector. */
                 vec3 viewDest = vec3(v_position, 0.0);
                 /* The viewpoint. */
@@ -62,8 +60,8 @@
 
                 /* Solve for the intersection. */
                 float a = dot(viewVector, viewVector);
-                float b = 2.0*dot(viewVector, viewSource-center);
-                float c = dot(viewSource-center, viewSource-center)-radius;
+                float b = 2.0*dot(viewVector, viewSource-u_center);
+                float c = dot(viewSource-u_center, viewSource-u_center)-u_radius*u_radius;
                 float disc = b*b-4.0*a*c;
                 if(disc >= 0.0) {
                     /* Compute the intersection with the sphere. */

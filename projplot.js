@@ -179,12 +179,16 @@ window.onload = function () {
 
         shaderProgram.u_displacement = gl.getUniformLocation(shaderProgram, 'u_displacement');
         shaderProgram.u_rotation = gl.getUniformLocation(shaderProgram, 'u_rotation');
+        shaderProgram.u_radius = gl.getUniformLocation(shaderProgram, 'u_radius');
+        shaderProgram.u_center = gl.getUniformLocation(shaderProgram, 'u_center');
         shaderProgram.a_position = gl.getAttribLocation(shaderProgram, 'a_position');
         gl.enableVertexAttribArray(shaderProgram.a_position);
         gl.vertexAttribPointer(shaderProgram.a_position, 2, gl.FLOAT, false, 0, 0);
 
         gl.uniform4fv(shaderProgram.u_rotation, rotQuat(rotationQuaternion));
         gl.uniform1f(shaderProgram.u_displacement, u_displacement);
+        gl.uniform1f(shaderProgram.u_radius, sphereRadius);
+        gl.uniform3fv(shaderProgram.u_center, sphereCenter);
 
         printCoordinateChange(rotationQuaternion);
 
@@ -237,6 +241,9 @@ window.onload = function () {
     var rotationQuaternion = [1,0,0,0];
     var u_displacement = 3.0;
 
+    var sphereCenter = [0,0,0];
+    var sphereRadius = 1.0;
+
     var quatSpan = document.getElementById('quat');
     printCoordinateChange(rotationQuaternion);
 
@@ -286,10 +293,11 @@ window.onload = function () {
 
     var locationSpan = document.getElementById('cursor-location');
     
+
+
     queueRedraw();
 
-    var sphereCenter = [0,0,0];
-    var sphereRadius = 1.0;
+
     /* Find the intersection between the sphere and the view vector at the given pixel coordinates. */
     var intersectSphere = function(coords) {
         var p1 = [coords[0], coords[1], 0];
