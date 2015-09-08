@@ -5,7 +5,7 @@
 var FRAME_INTERVAL = 1000.0 / 30;
 var DECIMAL_PLACES=3;
 
-function get_mousecoord(event) {
+function getMousecoord(event) {
     var elem = event.target || event.srcElement;
     var rect = elem.getBoundingClientRect();
     return [2*(event.clientX - rect.left) / elem.width-1,
@@ -233,9 +233,9 @@ window.onload = function () {
     var rotQuat = function(q) {
         return [q[1], q[2], q[3], q[0]];
     };
-    var rotationQuaternion = [0,0,0,1];
-    var u_displacement = -3.0;
-
+    //var rotationQuaternion = [0,0,0,1];
+    var rotationQuaternion = [1,0,0,0];
+    var u_displacement = 3.0;
 
     var quatSpan = document.getElementById('quat');
     printCoordinateChange(rotationQuaternion);
@@ -244,7 +244,7 @@ window.onload = function () {
         return q;
     };
 
-    var get_equation = function() {
+    var getEquation = function() {
         var prologue = 'float f(vec3 p) {\n\treturn ';
         var epilogue = ';\n}\n';
         var body = prologue + equationOption[equationOption.selectedIndex].value + epilogue;
@@ -259,22 +259,22 @@ window.onload = function () {
         } else {
             fs_name = 'shader-fragment-affine';
         }
-        shader = init_gl(fs_name,get_equation());
-        queue_redraw();
+        shader = init_gl(fs_name,getEquation());
+        queueRedraw();
     };
 
     var shader;
     if(modeButton.innerHTML.trim() == 'Projective') {
-        shader = init_gl('shader-fragment', get_equation());
+        shader = init_gl('shader-fragment', getEquation());
     } else {
-        shader = init_gl('shader-fragment-affine',get_equation());
+        shader = init_gl('shader-fragment-affine',getEquation());
     }
     var redrawing = false;
     var redraw = function() {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     };
-    var queue_redraw = function() {
+    var queueRedraw = function() {
         if(!redrawing) {
             redrawing = true;
             window.setTimeout(function() {
@@ -286,18 +286,18 @@ window.onload = function () {
 
     var locationSpan = document.getElementById('cursor-location');
     
-    queue_redraw();
+    queueRedraw();
 
-    var sphere_center = [0,0,0];
-    var sphere_radius = 1.0;
+    var sphereCenter = [0,0,0];
+    var sphereRadius = 1.0;
     /* Find the intersection between the sphere and the view vector at the given pixel coordinates. */
-    var intersect_sphere = function(coords) {
+    var intersectSphere = function(coords) {
         var p1 = [coords[0], coords[1], 0];
         var p0 = [0,0, u_displacement];
         var d = sub(p1, p0);
         var a = dot(d, d);
-        var b = 2*dot(sub(p0, sphere_center), d);
-        var c = dot(sub(p0, sphere_center), sub(p0, sphere_center)) - sphere_radius;
+        var b = 2*dot(sub(p0, sphereCenter), d);
+        var c = dot(sub(p0, sphereCenter), sub(p0, sphereCenter)) - sphereRadius*sphereRadius;
         var disc = b*b-4*a*c;
 
         if(disc >= 0) {
@@ -312,9 +312,9 @@ window.onload = function () {
     };
     var makeVector = function(coords) {
         if(modeButton.innerHTML.trim() == 'Projective') {
-            return intersect_sphere(coords);
+            return intersectSphere(coords);
         } else {
-            return [-coords[0]*u_displacement, -coords[1]*u_displacement, -1];
+            return [coords[0], coords[1], 1/u_displacement];
         }
     }
     var printCursorLocation = function(quat,p) {
@@ -348,7 +348,7 @@ window.onload = function () {
     var onmove = function(coords) {
         var p = makeVector(coords);
         if(p) {
-            p = sub(p, sphere_center);
+            p = sub(p, sphereCenter);
 
             var p1 = normalize(add(p,previousVector));
             var deltaQuaternion = vectorDivide(p1, previousVector);
@@ -364,7 +364,7 @@ window.onload = function () {
                 }, FRAME_INTERVAL);
             }
 
-            queue_redraw();
+            queueRedraw();
 
             previousVector = p;
         } else {
@@ -374,7 +374,7 @@ window.onload = function () {
     }
 	canvas.ontouchmove = function(event) {
         if(previousVector) {
-            var coords = get_mousecoord(event.touches[0]);
+            var coords = getMousecoord(event.touches[0]);
 
             onmove(coords);
         }
@@ -382,10 +382,7 @@ window.onload = function () {
 	};
     var printingCursorLocation = false;
 	canvas.onmousemove = function(event) {
-        var coords = get_mousecoord(event);
-        if(previousVector) {
-            onmove(coords);
-        }
+        var coords = getMousecoord(event);
         if(!printingCursorLocation) {
             printingCursorLocation = true;
             window.setTimeout(function () {
@@ -395,6 +392,9 @@ window.onload = function () {
                     printingCursorLocation = false;
                 }
             }, FRAME_INTERVAL);
+        }
+        if(previousVector) {
+            onmove(coords);
         }
         event.preventDefault();
 	};
@@ -407,15 +407,15 @@ window.onload = function () {
 		if(event.wheelDelta) {
 			delta = event.wheelDelta/120;
 		} else if(event.detail) {
-			delta = event.detail/-3;
+			delta = event.detail/(-3);
 		}
 		var t = u_displacement * Math.pow(1.1,delta);
-		if(1 < -t && -t < 150) {
+		if(1 < t && t < 200) {
 			u_displacement = t;
 		}
 
         gl.uniform1f(shader.u_displacement, u_displacement);
-        queue_redraw();
+        queueRedraw();
 
 		event.preventDefault();
 	}
@@ -451,21 +451,21 @@ window.onload = function () {
         previousVector = makeVector(coords);
         printCursorLocation(rotationQuaternion, previousVector);
         if(previousVector) {
-            previousVector = sub(previousVector, sphere_center);
+            previousVector = sub(previousVector, sphereCenter);
         }
     };
     canvas.onmousedown = function(event) {
-        var coords = get_mousecoord(event);
+        var coords = getMousecoord(event);
         ondown(coords);
         event.preventDefault();
     };
     canvas.ontouchstart = function(event) {
-        var coords = get_mousecoord(event.touches[0]);
+        var coords = getMousecoord(event.touches[0]);
         ondown(coords);
         event.preventDefault();
     };
     var planeQuats = {
-        'xy' : [0,0,0,1],
+        'xy' : [1,0,0,0],
         'xz' : [1,0,1,0],
         'yz' : [1,1,1,1]
     };
@@ -474,17 +474,17 @@ window.onload = function () {
         rotationQuaternion = normalize(planeQuats[planeOption[planeOption.selectedIndex].value]);
         gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
         printCoordinateChange(rotationQuaternion);
-        queue_redraw();
+        queueRedraw();
     };
     planeOption.onclick(null);
     modeButton.onclick = function(event) {
         if(modeButton.innerHTML.trim() == 'Projective') {
-            shader = init_gl('shader-fragment-affine',get_equation());
-            queue_redraw();
+            shader = init_gl('shader-fragment-affine',getEquation());
+            queueRedraw();
             modeButton.innerHTML = 'Affine';
         } else {
-            shader = init_gl('shader-fragment', get_equation());
-            queue_redraw();
+            shader = init_gl('shader-fragment', getEquation());
+            queueRedraw();
             modeButton.innerHTML = 'Projective';
         }
     };
