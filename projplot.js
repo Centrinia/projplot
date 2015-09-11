@@ -7,7 +7,7 @@ var DECIMAL_PLACES = 3;
 
 var TOKENS = {
     'MINUS': {
-        'regex': '(-|\\+-)'
+        'regex': '-'
     },
     'PLUS': {
         'regex': '\\+'
@@ -31,7 +31,7 @@ var TOKENS = {
         'regex': '='
     },
     'REAL': {
-        'regex': '\\d+(\\.\\d+)(e(\\+|-)?\\d+)?'
+        'regex': '(-)?\\d+(\\.\\d+)(e(\\+|-)?\\d+)?'
     },
     'INTEGER': {
         'regex': '\\d+'
@@ -224,7 +224,15 @@ PostfixParser.prototype.juxtaposeMultiply = function (tokens,multiplyToken) {
     var g = function (token) {
         return grammar[token['token']];
     }
+    var zero = {
+        'token': 'INTEGER',
+        'match': '0'
+    };
     for(var i=0;i<tokens.length;i++) {
+        // Prepend a zero to negative signs.
+        if((i == 0 || (0 < i && (g(tokens[i-1])['type'] == 'OPERATOR' || (g(tokens[i-1])['type'] == 'BRACKET' && g(tokens[i-1])['bracket'] == 'LEFT')))) && tokens[i]['token'] == 'MINUS') {
+            output.push(zero);
+        }
         output.push(tokens[i]);
         if(i < tokens.length-1 && g(tokens[i])['type'] == 'VALUE' && g(tokens[i+1])['type'] == 'VALUE') {
             output.push(multiplyToken);
@@ -286,21 +294,31 @@ PostfixParser.prototype.polynomial = function (tokens) {
     return stack[0];
 }
 
+/**
+ * A monomial is the product of variables to powers. One of these variables may be 1, the constant.
+ */
 var Monomial = function () {
     this.factors = [];
 };
-Monomial.minusOne = function () {
+
+/**
+ * Construct a monomial from a scalar value.
+ */
+Monomial.fromScalar = function (s) {
     var c = new Monomial();
 
     c.factors = [{
         'variable': '1',
-        'value': -1,
+        'value': s,
         'exponent': 1
     }];
 
     return c;
 };
 
+/**
+ * Construct a monomial from a coefficient and a list of variables to powers.
+ */
 Monomial.fromComponents = function (coefficient,variables) {
     var c = new Monomial();
     var m = {
@@ -311,6 +329,26 @@ Monomial.fromComponents = function (coefficient,variables) {
     c.factors = [m];
     c.factors = c.factors.concat(variables);
     c.canon();
+    return c;
+};
+
+/**
+ * Construct a monomial that is a variable taken to a power.
+ */
+Monomial.basisPower = function (x,p) {
+    var c = new Monomial();
+    var o = {
+        'exponent': 0,
+        'variable': '1',
+        'value': 1
+    };
+    var m = {
+        'exponent': p,
+        'variable': x,
+        'value': 1
+    };
+    c.factors = [m];
+
     return c;
 };
 
@@ -383,6 +421,9 @@ Monomial.fromToken = function (token) {
 };
 
 Monomial.prototype.canon = function () {
+    this.factors = this.factors.sort(function (x,y) {
+        return (x['variable'] > y['variable']) - (x['variable'] < y['variable']);
+    });
     var groups = this.factors.group(function (x,y) {
         return x['variable'] == y['variable'];
     });
@@ -405,14 +446,42 @@ Monomial.prototype.canon = function () {
 
 Monomial.prototype.multiply = function (b) {
     var c = new Monomial();
-    c.factors = this.factors.slice().concat(b.factors.slice());
 
-    c.factors = c.factors.sort(function (x,y) {
-        return (x['variable'] > y['variable']) - (x['variable'] < y['variable']);
-    });
+    c.factors = this.factors.slice().concat(b.factors.slice());
     c.canon();
+
     return c;
 }
+
+Monomial.prototype.degree = function () {
+    var degree = 0;
+    for(var i=0;i<this.factors.length;i++) {
+        degree += this.factors[i]['exponent'];
+    }
+    return degree;
+};
+
+Monomial.prototype.toGLSL = function () {
+    var str = '';
+    for(var i=0;i<this.factors.length;i++) {
+        if(0 < i) {
+            str += '*';
+        }
+        if(this.factors[i]['variable'] == '1') {
+            str += this.factors[i]['value'].toFixed(DECIMAL_PLACES);
+        } else {
+            for(var j=0;j<this.factors[i]['exponent'];j++) {
+                if(0 < j) {
+                    str += '*';
+                }
+                str += 'p.' + this.factors[i]['variable'];
+            }
+        }
+    }
+
+
+    return str;
+};
 
 Monomial.prototype.toString = function () {
     var str = '';
@@ -431,6 +500,10 @@ Monomial.prototype.toString = function () {
     }
     return str;
 };
+
+/**
+ * A polynomial is the sum of monomials.
+ */
 var Polynomial = function () {
     this.monomials = [];
 };
@@ -441,10 +514,16 @@ Polynomial.fromMonomial = function (m) {
     return c;
 };
 
-Polynomial.minusOne = function () {
-    return Polynomial.fromMonomial(Monomial.minusOne());
+/**
+ * Make a polynomial from a value.
+ */
+Polynomial.fromScalar = function (s) {
+    return Polynomial.fromMonomial(Monomial.fromScalar(s));
 };
 
+/**
+ * Canonicalize the polynomial.
+ */
 Polynomial.prototype.canon = function () {
     this.monomials.sort(function (x,y) {
         return y.lessThan(x) - x.lessThan(y);
@@ -452,7 +531,6 @@ Polynomial.prototype.canon = function () {
     var groups = this.monomials.group(function (x,y) {
         return x.equalTo(y);
     });
-    console.log(groups);
     var m = [];
     groups.forEach(function (group) {
         var value = 0;
@@ -475,13 +553,20 @@ Polynomial.prototype.add = function (b) {
     return c;
 };
 
+/**
+ * Subtract this polynomial with the argument.
+ */
 Polynomial.prototype.subtract = function (b) {
     var c = new Polynomial();
-    c.monomials = this.monomials.slice().concat(Polynomial.minusOne().multiply(b).monomials.slice());
+    c.monomials = this.monomials.slice().concat(Polynomial.fromScalar(-1).multiply(b).monomials.slice());
     c.canon();
 
     return c;
 };
+
+/**
+ * Multiply this polynomial with the argument.
+ */
 Polynomial.prototype.multiply = function (b) {
     var c = new Polynomial();
 
@@ -494,6 +579,9 @@ Polynomial.prototype.multiply = function (b) {
     return c;
 };
 
+/**
+ * Take this polynomial to an integer power.
+ */
 Polynomial.prototype.power = function (b) {
     var c = null;
     var asq = this;
@@ -511,6 +599,39 @@ Polynomial.prototype.power = function (b) {
         b >>= 1;
     }
     return c;
+};
+
+/**
+ * Generate a GLSL function.
+ */
+Polynomial.prototype.toGLSL = function () {
+    var str = '';
+    var wasHomogenized = true;
+    var degree = this.monomials[0].degree();
+    for(var i=1;i<this.monomials.length;i++) {
+        if(this.monomials[i].degree() > degree) {
+            wasHomogenized = false;
+            degree = this.monomials[i].degree();
+        }
+    }
+    
+    for(var i=0;i<this.monomials.length;i++) {
+        console.log(degree - this.monomials[i].degree(),degree,this.monomials[i].degree());
+        if(this.monomials[i].degree() < degree) {
+            this.monomials[i] = this.monomials[i].multiply(Monomial.basisPower('z',degree-this.monomials[i].degree()));
+        }
+    }
+
+    for(var i=0;i<this.monomials.length;i++) {
+        if(0 < i) {
+            str+= ' + ';
+        }
+        str += this.monomials[i].toGLSL();
+    }
+    var PROLOGUE = 'float f(vec3 p) {\n\treturn ';
+    var EPILOGUE = ';\n}\n';
+    var glsl = PROLOGUE + str + EPILOGUE;
+    return glsl;
 };
 
 Polynomial.prototype.toString = function () {
@@ -768,37 +889,6 @@ window.onload = function () {
     var showQuaternion = function (q) {
         return q;
     };
-
-    var getEquation = function () {
-        var prologue = 'float f(vec3 p) {\n\treturn ';
-        var epilogue = ';\n}\n';
-        var body = prologue + equationOption[equationOption.selectedIndex].value + epilogue;
-        return body;
-    };
-    var equationOption = document.getElementById('equation');
-    var modeButton = document.getElementById('mode-button');
-    equationOption.onchange = function (event) {
-        var fs_name;
-        if(modeButton.innerHTML.trim() == 'Projective') {
-            fs_name = 'shader-fragment';
-        } else {
-            fs_name = 'shader-fragment-affine';
-        }
-        shader = init_gl(fs_name,getEquation());
-        queueRedraw();
-    };
-
-    var shader;
-    if(modeButton.innerHTML.trim() == 'Projective') {
-        shader = init_gl('shader-fragment', getEquation());
-    } else {
-        shader = init_gl('shader-fragment-affine',getEquation());
-    }
-    var redrawing = false;
-    var redraw = function () {
-        gl.clear(gl.COLOR_BUFFER_BIT);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-    };
     var queueRedraw = function () {
         if(!redrawing) {
             redrawing = true;
@@ -809,6 +899,73 @@ window.onload = function () {
         }
     };
 
+
+    var changeShader = function (mode, glsl) {
+        var fs_name;
+        if(mode == 'Projective') {
+            fs_name = 'shader-fragment';
+        } else {
+            fs_name = 'shader-fragment-affine';
+        }
+        shader = init_gl(fs_name,glsl);
+        queueRedraw();
+    };
+
+    var changeEquation = function(mode, equation) {
+        console.log(equation);
+        var lex = new Lexer(TOKENS);
+        var lexResult = lex.lex(equation);
+        if(lexResult) {
+            console.log(lexResult);
+        } else {
+            console.log('Could not lex.');
+            return;
+        }
+        var postfix = new PostfixParser(GRAMMAR);
+        lexResult = postfix.juxtaposeMultiply(lexResult,
+                {
+                    'token': 'TIMES',
+                    'match': '*'
+                });
+        console.log(lexResult);
+        var postfixResult = postfix.parse(lexResult);
+        if(!postfixResult) {
+            console.log('Can not parse.');
+            return;
+        }
+        postfix.parseValues(postfixResult);
+
+        var polynomial = postfix.polynomial(postfixResult);
+        if(!polynomial) {
+            return;
+        }
+        var glsl = polynomial.toGLSL();
+    
+        console.log(glsl);
+        changeShader(mode, glsl);
+    };
+
+
+    var shader;
+    var equationOption = document.getElementById('equation');
+    var equationText = document.getElementById('equation-text');
+    var modeButton = document.getElementById('mode-button');
+
+    var equationOptionChange = function() {
+        equationText.value = equationOption[equationOption.selectedIndex].value;
+        changeEquation(modeButton.innerHTML.trim(), equationText.value);
+    };
+    equationOption.onchange = function (event) {
+        equationOptionChange();
+    };
+
+    equationOptionChange();
+
+    var redrawing = false;
+    var redraw = function () {
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    };
     var locationSpan = document.getElementById('cursor-location');
     
 
@@ -1005,44 +1162,27 @@ window.onload = function () {
     planeOption.onclick(null);
     modeButton.onclick = function (event) {
         if(modeButton.innerHTML.trim() == 'Projective') {
-            shader = init_gl('shader-fragment-affine',getEquation());
-            queueRedraw();
             modeButton.innerHTML = 'Affine';
         } else {
-            shader = init_gl('shader-fragment', getEquation());
-            queueRedraw();
             modeButton.innerHTML = 'Projective';
         }
+        changeEquation(modeButton.innerHTML.trim(), equationText.value);
     };
-
-    var equationText = document.getElementById('equation-text');
+    var addEquationOption = function(equation) {
+        for(var i=0;i<equationOption.size;i++) {
+            if(equationText.value == equationOption[i].value) {
+                return;
+            }
+        }
+        var option = document.createElement('option');
+        option.text = equation;
+        option.value = equation;
+        equationOption.add(option);
+        return;
+    };
     equationText.onchange = function (event) {
-        //console.log(equationText.value);
-        var lex = new Lexer(TOKENS);
-        var lexResult = lex.lex(equationText.value);
-        if(lexResult) {
-            console.log(lexResult);
-        } else {
-            window.alert('Can not lex.');
-            console.log('Can not lex.');
-        }
-        var postfix = new PostfixParser(GRAMMAR);
-        lexResult = postfix.juxtaposeMultiply(lexResult,
-                {
-                    'token': 'TIMES',
-                    'match': '*'
-                });
-        console.log(lexResult);
-        var postfixResult = postfix.parse(lexResult);
-        if(postfixResult) {
-            console.log(postfixResult);
-        } else {
-            window.alert('Can not parse.');
-            console.log('Can not parse.');
-        }
-        postfix.parseValues(postfixResult);
-        var polynomial = postfix.polynomial(postfixResult);
-        console.log(polynomial.toString());
+        changeEquation(modeButton.innerHTML.trim(), equationText.value);
+        addEquationOption(equationText.value);
     };
 };
 

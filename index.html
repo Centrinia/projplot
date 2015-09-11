@@ -118,38 +118,41 @@
         </script>
     </head>
     <body>
-        <input type='text' id='equation-text' width='200'/>
-        <br/>
-        Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         <canvas id="canvas" width="1024" height="1024"></canvas>
-        <br/>
-        Mode: <button id="mode-button">Affine</button>
-        <br/>
-        Equation:
-        <select id='equation'>
-            <option value='p.x*p.x-p.y*p.z'>x^2=y</option>
-            <option value='p.x*p.x+p.y*p.y-p.z*p.z'>x^2+y^2=1</option>
-            <option value='(p.x*p.x-p.y*p.z)*(p.x*p.x*p.x-p.x*p.z*p.z-p.y*p.y*p.z)'>(x^2-y)*(x^3-x-y^2)=0</option>
-            <option value='p.x*p.x*p.x-p.x*p.z*p.z-p.y*p.y*p.z'>x^3-x=y^2</option>
-            <option value='p.x*p.x*p.x-p.x*p.y*p.y-p.y*p.z*p.z'>x^3-x*y^2=y</option>
-            <option value='p.x*p.x*p.x*p.x-2.0*p.x*p.x*p.z*p.z+3.0*p.z*p.z*p.z*p.z-p.y*p.y*p.z*p.z'>x^4-2*x^2+3=y^2</option>
-            <option value='p.x*p.x*p.x-3.0*p.x*p.z*p.z+2.0*p.z*p.z*p.z-p.y*p.y*p.z'>x^3-3*x+2=y^2</option>
-            <option value='p.x*p.x*p.x*p.y+p.y*p.y*p.y*p.z+p.z*p.z*p.z*p.x'>x^3*y+y^3*z+z^3*x=0</option>
-        </select>
-        <br/>
-        Plane:
-        <select id='plane'>
-            <option value='xy'>X-Y</option>
-            <option value='xz'>X-Z</option>
-            <option value='yz'>Y-Z</option>
-        </select>
-        <br/>
-        <br/>
         <p>
-        Cursor location: <span id='cursor-location'></span>
+            Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         </p>
         <p>
-       Change of coordinates: <span id='quat'></span>
+            Mode: <button id="mode-button">Affine</button>
+        </p>
+        <p>
+            Equation:
+            <input type='text' id='equation-text' width='200'/>
+            <br/>
+            <select id='equation'>
+                <option value='x^2=y'>x^2=y</option>
+                <option value='x^2+y^2=1'>x^2+y^2=1</option>
+                <option value='(x^2-y)*(x^3-x-y^2)=0'>(x^2-y)*(x^3-x-y^2)=0</option>
+                <option value='x^3-x=y^2'>x^3-x=y^2</option>
+                <option value='x^3-x*y^2=y'>x^3-x*y^2=y</option>
+                <option value='x^4-2*x^2+3=y^2'>x^4-2*x^2+3=y^2</option>
+                <option value='x^3-3*x+2=y^2'>x^3-3*x+2=y^2</option>
+                <option value='x^3*y+y^3*z+z^3*x=0'>x^3*y+y^3*z+z^3*x=0</option>
+            </select>
+        </p>
+        <p>
+            Plane:
+            <select id='plane'>
+                <option value='xy'>X-Y</option>
+                <option value='xz'>X-Z</option>
+                <option value='yz'>Y-Z</option>
+            </select>
+        </p>
+        <p>
+            Cursor location: <span id='cursor-location'></span>
+        </p>
+        <p>
+            Change of coordinates: <span id='quat'></span>
         </p>
     </body>
 </html>
