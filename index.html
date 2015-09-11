@@ -118,6 +118,9 @@
         </script>
     </head>
     <body>
+        <input type='text' id='equation-text' width='200'/>
+        <br/>
+        Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         <canvas id="canvas" width="1024" height="1024"></canvas>
         <br/>
         Mode: <button id="mode-button">Affine</button>
@@ -141,7 +144,6 @@
             <option value='yz'>Y-Z</option>
         </select>
         <br/>
-        Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         <br/>
         <p>
         Cursor location: <span id='cursor-location'></span>

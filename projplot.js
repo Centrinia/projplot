@@ -3,8 +3,208 @@
 "use strict";
 
 var FRAME_INTERVAL = 1000.0 / 30;
-var DECIMAL_PLACES=3;
+var DECIMAL_PLACES = 3;
 
+var TOKENS = {
+    'MINUS': {
+        'regex': '(-|\\+-)'
+    },
+    'PLUS': {
+        'regex': '\\+'
+    },
+    'TIMES': {
+        'regex': '\\*'
+    },
+    'POWER': {
+        'regex': '\\^'
+    },
+    'SYMBOL': {
+        'regex': '\\w'
+    },
+    'LPAREN': {
+        'regex': '\\('
+    },
+    'RPAREN': {
+        'regex': '\\)'
+    },
+    'EQUALS': {
+        'regex': '='
+    },
+    'REAL': {
+        'regex': '\\d+(\\.\\d+)?(e(\\+|-)?\\d+)?'
+    },
+    'SPACES': {
+        'regex': '\\s+'
+    },
+};
+
+var GRAMMAR = {
+    'SPACES': {
+        'type': 'IGNORE',
+    },
+    'REAL': {
+        'type': 'VALUE',
+    },
+    'SYMBOL': {
+        'type': 'VALUE',
+    },
+    'PLUS': {
+        'precedence': 1,
+        'associativity': 'LEFT',
+        'type': 'OPERATOR'
+    },
+    'MINUS': {
+        'precedence': 1,
+        'associativity': 'LEFT',
+        'type': 'OPERATOR'
+    },
+    'TIMES': {
+        'precedence': 2,
+        'associativity': 'LEFT',
+        'type': 'OPERATOR'
+    },
+    'POWER': {
+        'precedence': 3,
+        'associativity': 'RIGHT',
+        'type': 'OPERATOR'
+    },
+    'LPAREN': {
+        'precedence': 4,
+        'bracket': 'LEFT',
+        'type': 'BRACKET'
+    },
+    'RPAREN': {
+        'precedence': 4,
+        'bracket': 'RIGHT',
+        'type': 'BRACKET'
+    },
+    'EQUALS': {
+        'precedence': 0,
+        'associativity': 'LEFT',
+        'type': 'OPERATOR'
+    },
+};
+
+if(!Array.prototype.last) {
+    Array.prototype.last = function() {
+        return this[this.length - 1];
+    }
+};
+
+var Lexer = function(tokens) {
+    this.tokens = tokens;
+};
+
+/**
+ * Find a token at the start of the string.
+ */
+Lexer.prototype.find = function(str) {
+    for(var token in this.tokens) {
+        var re = new RegExp('^' + this.tokens[token]['regex']);
+        if(re.test(str)) {
+            var result = re.exec(str);
+            var m = result[0];
+            return {
+                'token': token,
+                'match': m,
+                'remain': str.slice(result.index+m.length)
+            };
+        }
+    }
+    return null;
+};
+
+/**
+ * Construct a list of tokens from the string.
+ */
+Lexer.prototype.lex = function (str) {
+    var result = [ ];
+    while(str.length > 0) {
+        var m = this.find(str);
+        if(m) {
+            result.push({
+                'token': m['token'],
+                'match': m['match']
+            });
+            str = m['remain'];
+        } else {
+            return null;
+        }
+    }
+    return result;
+};
+
+
+
+var PostfixParser = function(grammar) {
+    this.grammar = grammar;
+};
+
+PostfixParser.prototype.parse = function(tokens) {
+    var stack = [];
+    var output = [];
+    var grammar = this.grammar;
+    // The shunting yard algorithm.
+    var g = function(token) {
+        return grammar[token['token']];
+    }
+    tokens.forEach(function(token) {
+        if(g(token)['type'] == 'VALUE') {
+            output.push(token);
+        } else if(g(token)['type'] == 'OPERATOR') {
+            var o1 = token;
+            while(stack.length > 0) {
+                var o2 = stack[stack.length - 1];
+                if(g(o2)['type'] == 'OPERATOR' && 
+                    ((g(o1)['associativity'] == 'LEFT' && g(o1)['precedence'] <= g(o2)['precedence']) ||
+                    (g(o1)['associativity'] == 'RIGHT' && g(o1)['precedence'] < g(o2)['precedence']))) {
+                    output.push(stack.pop());
+                } else {
+                    break;
+                }
+            }
+            stack.push(o1);
+        } else if(g(token)['type'] == 'BRACKET') {
+            if(g(token)['bracket'] == 'LEFT') {
+                stack.push(token);
+            } else if(g(token)['bracket'] == 'RIGHT') {
+                while(stack.length > 0 && 
+                    !(g(stack[stack.length-1])['type'] == 'BRACKET' && g(stack[stack.length-1])['bracket'] == 'LEFT')
+                ) {
+                    output.push(stack.pop());
+                }
+                if(stack.length > 0) {
+                    stack.pop();
+                } else {
+                    console.log('Mismatched brackets');
+                }
+            }
+        }
+    });
+    while(stack.length > 0) {
+        if(g(stack[stack.length - 1])['type'] == 'BRACKET') {
+            console.log('Mismatched brackets');
+            return null;
+        }
+        output.push(stack.pop());
+    }
+    return output;
+};
+
+PostfixParser.prototype.juxtaposeMultiply = function(tokens,multiplyToken) {
+    var output = [];
+    var grammar = this.grammar;
+    var g = function(token) {
+        return grammar[token['token']];
+    }
+    for(var i=0;i<tokens.length;i++) {
+        output.push(tokens[i]);
+        if(i < tokens.length-1 && g(tokens[i])['type'] == 'VALUE' && g(tokens[i+1])['type'] == 'VALUE') {
+            output.push(multiplyToken);
+        }
+    }
+    return output;
+};
 function getMousecoord(event) {
     var elem = event.target || event.srcElement;
     var rect = elem.getBoundingClientRect();
@@ -497,5 +697,31 @@ window.onload = function () {
         }
     };
 
+    var equationText = document.getElementById('equation-text');
+    equationText.onchange = function(event) {
+        //console.log(equationText.value);
+        var lex = new Lexer(TOKENS);
+        var lexResult = lex.lex(equationText.value);
+        if(lexResult) {
+            console.log(lexResult);
+        } else {
+            window.alert('Can not lex.');
+            console.log('Can not lex.');
+        }
+        var postfix = new PostfixParser(GRAMMAR);
+        lexResult = postfix.juxtaposeMultiply(lexResult,
+                {
+                    'token': 'TIMES',
+                    'match': '*'
+                });
+        console.log(lexResult);
+        var postfixResult = postfix.parse(lexResult);
+        if(postfixResult) {
+            console.log(postfixResult);
+        } else {
+            window.alert('Can not parse.');
+            console.log('Can not parse.');
+        }
+    };
 };
 
