@@ -19,7 +19,7 @@ var TOKENS = {
         'regex': '\\^'
     },
     'SYMBOL': {
-        'regex': '\\w'
+        'regex': '[x-z]'
     },
     'LPAREN': {
         'regex': '\\('
@@ -31,7 +31,10 @@ var TOKENS = {
         'regex': '='
     },
     'REAL': {
-        'regex': '\\d+(\\.\\d+)?(e(\\+|-)?\\d+)?'
+        'regex': '\\d+(\\.\\d+)(e(\\+|-)?\\d+)?'
+    },
+    'INTEGER': {
+        'regex': '\\d+'
     },
     'SPACES': {
         'regex': '\\s+'
@@ -41,6 +44,9 @@ var TOKENS = {
 var GRAMMAR = {
     'SPACES': {
         'type': 'IGNORE',
+    },
+    'INTEGER': {
+        'type': 'VALUE',
     },
     'REAL': {
         'type': 'VALUE',
@@ -86,19 +92,40 @@ var GRAMMAR = {
 };
 
 if(!Array.prototype.last) {
-    Array.prototype.last = function() {
+    Array.prototype.last = function () {
         return this[this.length - 1];
     }
 };
 
-var Lexer = function(tokens) {
+if(!Array.prototype.group) {
+    Array.prototype.group = function (cmp) {
+        if(!cmp) {
+            cmp = function (a,b) {
+                return a == b;
+            };
+        }
+        var out = [];
+        var k=0;
+        for(var i=0;i<this.length;i++) {
+            if(!cmp(this[k], this[i])) {
+                out.push(this.slice(k,i));
+                k = i;
+            }
+        }
+        out.push(this.slice(k,i));
+        return out;
+    }
+};
+
+
+var Lexer = function (tokens) {
     this.tokens = tokens;
 };
 
 /**
  * Find a token at the start of the string.
  */
-Lexer.prototype.find = function(str) {
+Lexer.prototype.find = function (str) {
     for(var token in this.tokens) {
         var re = new RegExp('^' + this.tokens[token]['regex']);
         if(re.test(str)) {
@@ -136,19 +163,19 @@ Lexer.prototype.lex = function (str) {
 
 
 
-var PostfixParser = function(grammar) {
+var PostfixParser = function (grammar) {
     this.grammar = grammar;
 };
 
-PostfixParser.prototype.parse = function(tokens) {
+PostfixParser.prototype.parse = function (tokens) {
     var stack = [];
     var output = [];
     var grammar = this.grammar;
     // The shunting yard algorithm.
-    var g = function(token) {
+    var g = function (token) {
         return grammar[token['token']];
     }
-    tokens.forEach(function(token) {
+    tokens.forEach(function (token) {
         if(g(token)['type'] == 'VALUE') {
             output.push(token);
         } else if(g(token)['type'] == 'OPERATOR') {
@@ -191,10 +218,10 @@ PostfixParser.prototype.parse = function(tokens) {
     return output;
 };
 
-PostfixParser.prototype.juxtaposeMultiply = function(tokens,multiplyToken) {
+PostfixParser.prototype.juxtaposeMultiply = function (tokens,multiplyToken) {
     var output = [];
     var grammar = this.grammar;
-    var g = function(token) {
+    var g = function (token) {
         return grammar[token['token']];
     }
     for(var i=0;i<tokens.length;i++) {
@@ -204,6 +231,297 @@ PostfixParser.prototype.juxtaposeMultiply = function(tokens,multiplyToken) {
         }
     }
     return output;
+};
+
+PostfixParser.prototype.parseValues = function (tokens) {
+    var grammar = this.grammar;
+    var g = function (token) {
+        return grammar[token['token']];
+    }
+    for(var i=0;i<tokens.length;i++) {
+        var token = tokens[i];
+        if(g(token)['type'] == 'VALUE') {
+            if(token['token'] == 'INTEGER') {
+                token['value'] = parseInt(token['match'])
+            } else if(token['token'] == 'REAL') {
+                token['value'] = parseFloat(token['match'])
+            }
+        }
+    }
+};
+
+PostfixParser.prototype.polynomial = function (tokens) {
+    var grammar = this.grammar;
+    var g = function (token) {
+        return grammar[token['token']];
+    }
+    var stack = [];
+    tokens.forEach(function (token) {
+        if(g(token)['type'] == 'VALUE') {
+            stack.push(Polynomial.fromMonomial(Monomial.fromToken(token)));
+        } else if(g(token)['type'] == 'OPERATOR') {
+            var o2 = stack.pop();
+            var o1 = stack.pop();
+            if(!o1 || !o2) {
+                console.log('Parse error');
+                return null;
+            }
+            if(token['token'] == 'TIMES') {
+                stack.push(o1.multiply(o2));
+            } else if(token['token'] == 'PLUS') {
+                stack.push(o1.add(o2));
+            } else if(token['token'] == 'MINUS') {
+                stack.push(o1.subtract(o2));
+            } else if(token['token'] == 'EQUALS') {
+                stack.push(o1.subtract(o2));
+            } else if(token['token'] == 'POWER') {
+                /*if(!o2.isInteger()) {
+                    console.log('Exponent not an integer.');
+                    return null;
+                }*/
+                stack.push(o1.power(o2['monomials'][0]['factors'][0]['value']));
+            }
+        }
+    });
+    return stack[0];
+}
+
+var Monomial = function () {
+    this.factors = [];
+};
+Monomial.minusOne = function () {
+    var c = new Monomial();
+
+    c.factors = [{
+        'variable': '1',
+        'value': -1,
+        'exponent': 1
+    }];
+
+    return c;
+};
+
+Monomial.fromComponents = function (coefficient,variables) {
+    var c = new Monomial();
+    var m = {
+        'exponent': 0,
+        'variable': '1',
+        'value': coefficient
+    };
+    c.factors = [m];
+    c.factors = c.factors.concat(variables);
+    c.canon();
+    return c;
+};
+
+
+Monomial.prototype.getCoefficient = function () {
+    for(var i=0;i<this.factors.length;i++) {
+        var factor = this.factors[i];
+        if(factor['variable'] == '1') {
+            return factor['value'];
+        }
+    }
+    return 1;
+};
+
+Monomial.prototype.equalTo = function(b) {
+    if(this.factors.length != b.factors.length) {
+        return false;
+    }
+    for(var i=0;i<this.factors.length;i++) {
+        if(this.factors[i]['variable'] != b.factors[i]['variable']) {
+            return false;
+        } else if(this.factors[i]['exponent'] != b.factors[i]['exponent']) {
+            return false;
+        }
+    }
+    return true;
+};
+
+
+Monomial.prototype.lessThan = function(b) {
+    for(var i=0;i<this.factors.length;i++) {
+        if(i >= b.factors.length) {
+            return -1;
+        }
+
+        if(this.factors[i]['variable'] != b.factors[i]['variable']) {
+            return (this.factors[i]['variable'] < b.factors[i]['variable']) - (this.factors[i]['variable'] > b.factors[i]['variable']);
+        } else if(this.factors[i]['exponent'] != b.factors[i]['exponent']) {
+            return (this.factors[i]['exponent'] < b.factors[i]['exponent']) - (this.factors[i]['exponent'] > b.factors[i]['exponent']);
+        }
+    }
+    return this.factors.length < b.factors.length ? 1 : 0;
+};
+
+
+Monomial.prototype.getVariables = function () {
+    var v = [];
+    this.factors.forEach(function (factor) {
+        if(factor['variable'] != '1') {
+            v.push(factor);
+        }
+    });
+    return v;
+};
+
+Monomial.fromToken = function (token) {
+    var c = new Monomial();
+    var m = {};
+    if(token['token'] == 'SYMBOL') {
+        m['exponent'] = 1;
+        m['value'] = '1';
+        m['variable'] = token['match'].slice();
+    } else if(token['token'] == 'INTEGER' || token['token'] == 'REAL') {
+        m['exponent'] = 0;
+        m['variable'] = '1';
+        m['value'] = token['value'];
+    }
+    c.factors = [m];
+    return c;
+};
+
+Monomial.prototype.canon = function () {
+    var groups = this.factors.group(function (x,y) {
+        return x['variable'] == y['variable'];
+    });
+    var f = [];
+    groups.forEach(function (group) {
+        var exponent = 0;
+        var value = 1;
+        group.forEach(function (term) {
+            exponent += term['exponent'];
+            value *= term['value'];
+        });
+        f.push({
+            'variable': group[0]['variable'],
+            'value': value,
+            'exponent': exponent
+        });
+    });
+    this.factors = f;
+};
+
+Monomial.prototype.multiply = function (b) {
+    var c = new Monomial();
+    c.factors = this.factors.slice().concat(b.factors.slice());
+
+    c.factors = c.factors.sort(function (x,y) {
+        return (x['variable'] > y['variable']) - (x['variable'] < y['variable']);
+    });
+    c.canon();
+    return c;
+}
+
+Monomial.prototype.toString = function () {
+    var str = '';
+    for(var i=0;i<this.factors.length;i++) {
+        if(0 < i) {
+            str += '*';
+        }
+        if(this.factors[i]['variable'] == '1') {
+            str += this.factors[i]['value'];
+        } else {
+            str += this.factors[i]['variable'];
+            if(this.factors[i]['exponent'] > 1) {
+                str += '^' + this.factors[i]['exponent'];
+            }
+        }
+    }
+    return str;
+};
+var Polynomial = function () {
+    this.monomials = [];
+};
+
+Polynomial.fromMonomial = function (m) {
+    var c = new Polynomial();
+    c.monomials = [m];
+    return c;
+};
+
+Polynomial.minusOne = function () {
+    return Polynomial.fromMonomial(Monomial.minusOne());
+};
+
+Polynomial.prototype.canon = function () {
+    this.monomials.sort(function (x,y) {
+        return y.lessThan(x) - x.lessThan(y);
+    });
+    var groups = this.monomials.group(function (x,y) {
+        return x.equalTo(y);
+    });
+    console.log(groups);
+    var m = [];
+    groups.forEach(function (group) {
+        var value = 0;
+        group.forEach(function (monomial) {
+            //monomial.canon();
+            value += monomial.getCoefficient();
+        });
+        if(value != 0) {
+            var out = Monomial.fromComponents(value, group[0].getVariables());
+            m.push(out);
+        }
+    });
+    this.monomials = m;
+};
+
+Polynomial.prototype.add = function (b) {
+    var c = new Polynomial();
+    c.monomials = this.monomials.slice().concat(b.monomials.slice());
+    c.canon();
+    return c;
+};
+
+Polynomial.prototype.subtract = function (b) {
+    var c = new Polynomial();
+    c.monomials = this.monomials.slice().concat(Polynomial.minusOne().multiply(b).monomials.slice());
+    c.canon();
+
+    return c;
+};
+Polynomial.prototype.multiply = function (b) {
+    var c = new Polynomial();
+
+    this.monomials.forEach(function (ai) {
+        b.monomials.forEach(function (bi) {
+            c = c.add(Polynomial.fromMonomial(ai.multiply(bi)));
+        });
+    });
+
+    return c;
+};
+
+Polynomial.prototype.power = function (b) {
+    var c = null;
+    var asq = this;
+    while(b > 0) {
+        if(b&1) {
+            if(c == null) {
+                c = asq;
+            } else {
+                c = c.multiply(asq);
+            }
+        }
+        if(b > 1) {
+            asq = asq.multiply(asq);
+        }
+        b >>= 1;
+    }
+    return c;
+};
+
+Polynomial.prototype.toString = function () {
+    var str = '';
+    for(var i=0;i<this.monomials.length;i++) {
+        if(0 < i) {
+            str+= ' + ';
+        }
+        str += this.monomials[i].toString();
+    }
+    return str;
 };
 function getMousecoord(event) {
     var elem = event.target || event.srcElement;
@@ -394,7 +712,7 @@ window.onload = function () {
 
         return shaderProgram;
     };
-    var printCoordinateChange = function(quat) {
+    var printCoordinateChange = function (quat) {
         var vars = ['x','y','z'];
         var str = '<p>';
         /* The accuracy of the coefficient display. */
@@ -434,7 +752,7 @@ window.onload = function () {
         quatSpan.innerHTML = str;
     };
 
-    var rotQuat = function(q) {
+    var rotQuat = function (q) {
         return [q[1], q[2], q[3], q[0]];
     };
     //var rotationQuaternion = [0,0,0,1];
@@ -451,7 +769,7 @@ window.onload = function () {
         return q;
     };
 
-    var getEquation = function() {
+    var getEquation = function () {
         var prologue = 'float f(vec3 p) {\n\treturn ';
         var epilogue = ';\n}\n';
         var body = prologue + equationOption[equationOption.selectedIndex].value + epilogue;
@@ -477,14 +795,14 @@ window.onload = function () {
         shader = init_gl('shader-fragment-affine',getEquation());
     }
     var redrawing = false;
-    var redraw = function() {
+    var redraw = function () {
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 6);
     };
-    var queueRedraw = function() {
+    var queueRedraw = function () {
         if(!redrawing) {
             redrawing = true;
-            window.setTimeout(function() {
+            window.setTimeout(function () {
                 redraw();
                 redrawing = false;
             }, FRAME_INTERVAL);
@@ -499,7 +817,7 @@ window.onload = function () {
 
 
     /* Find the intersection between the sphere and the view vector at the given pixel coordinates. */
-    var intersectSphere = function(coords) {
+    var intersectSphere = function (coords) {
         var p1 = [coords[0], coords[1], 0];
         var p0 = [0,0, u_displacement];
         var d = sub(p1, p0);
@@ -518,14 +836,14 @@ window.onload = function () {
             return null;
         }
     };
-    var makeVector = function(coords) {
+    var makeVector = function (coords) {
         if(modeButton.innerHTML.trim() == 'Projective') {
             return intersectSphere(coords);
         } else {
             return [coords[0], coords[1], 1/u_displacement];
         }
     }
-    var printCursorLocation = function(quat,p) {
+    var printCursorLocation = function (quat,p) {
         var str;
         if(p) {
             var q = quaternionApply(quat, p);
@@ -553,7 +871,7 @@ window.onload = function () {
     };
     var previousVector = null;
     var printingCoordinateChange = false;
-    var onmove = function(coords) {
+    var onmove = function (coords) {
         var p = makeVector(coords);
         if(p) {
             p = sub(p, sphereCenter);
@@ -566,7 +884,7 @@ window.onload = function () {
             gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
             if(!printingCoordinateChange) {
                 printingCoordinateChange = true;
-                window.setTimeout(function() {
+                window.setTimeout(function () {
                     printCoordinateChange(rotationQuaternion);
                     printingCoordinateChange = false;
                 }, FRAME_INTERVAL);
@@ -580,7 +898,7 @@ window.onload = function () {
         }
         event.preventDefault();
     }
-	canvas.ontouchmove = function(event) {
+	canvas.ontouchmove = function (event) {
         if(previousVector) {
             var coords = getMousecoord(event.touches[0]);
 
@@ -589,7 +907,7 @@ window.onload = function () {
         event.preventDefault();
 	};
     var printingCursorLocation = false;
-	canvas.onmousemove = function(event) {
+	canvas.onmousemove = function (event) {
         var coords = getMousecoord(event);
         if(!printingCursorLocation) {
             printingCursorLocation = true;
@@ -606,7 +924,7 @@ window.onload = function () {
         }
         event.preventDefault();
 	};
-	canvas.onmousewheel = function(event) {
+	canvas.onmousewheel = function (event) {
 		if(!event) {
 			event = window.event;
 		}
@@ -628,46 +946,46 @@ window.onload = function () {
 		event.preventDefault();
 	}
 
-    canvas.ontouchend = function(event) {
+    canvas.ontouchend = function (event) {
         previousVector = null;
         printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
-    canvas.onmouseleave = function(event) {
+    canvas.onmouseleave = function (event) {
         previousVector = null;
         printingCursorLocation = false;
         printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
-    canvas.ontouchcancel = function(event) {
+    canvas.ontouchcancel = function (event) {
         previousVector = null;
         printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
-    canvas.ontouchleave = function(event) {
+    canvas.ontouchleave = function (event) {
         previousVector = null;
         printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
-    canvas.onmouseup = function(event) {
+    canvas.onmouseup = function (event) {
         previousVector = null;
         //printCursorLocation(rotationQuaternion, previousVector);
         event.preventDefault();
     };
 
-    var ondown = function(coords) {
+    var ondown = function (coords) {
         previousVector = makeVector(coords);
         printCursorLocation(rotationQuaternion, previousVector);
         if(previousVector) {
             previousVector = sub(previousVector, sphereCenter);
         }
     };
-    canvas.onmousedown = function(event) {
+    canvas.onmousedown = function (event) {
         var coords = getMousecoord(event);
         ondown(coords);
         event.preventDefault();
     };
-    canvas.ontouchstart = function(event) {
+    canvas.ontouchstart = function (event) {
         var coords = getMousecoord(event.touches[0]);
         ondown(coords);
         event.preventDefault();
@@ -678,14 +996,14 @@ window.onload = function () {
         'yz' : [1,1,1,1]
     };
     var planeOption = document.getElementById('plane');
-    planeOption.onclick = function(event) {
+    planeOption.onclick = function (event) {
         rotationQuaternion = normalize(planeQuats[planeOption[planeOption.selectedIndex].value]);
         gl.uniform4fv(shader.u_rotation, rotQuat(rotationQuaternion));
         printCoordinateChange(rotationQuaternion);
         queueRedraw();
     };
     planeOption.onclick(null);
-    modeButton.onclick = function(event) {
+    modeButton.onclick = function (event) {
         if(modeButton.innerHTML.trim() == 'Projective') {
             shader = init_gl('shader-fragment-affine',getEquation());
             queueRedraw();
@@ -698,7 +1016,7 @@ window.onload = function () {
     };
 
     var equationText = document.getElementById('equation-text');
-    equationText.onchange = function(event) {
+    equationText.onchange = function (event) {
         //console.log(equationText.value);
         var lex = new Lexer(TOKENS);
         var lexResult = lex.lex(equationText.value);
@@ -722,6 +1040,9 @@ window.onload = function () {
             window.alert('Can not parse.');
             console.log('Can not parse.');
         }
+        postfix.parseValues(postfixResult);
+        var polynomial = postfix.polynomial(postfixResult);
+        console.log(polynomial.toString());
     };
 };
 
