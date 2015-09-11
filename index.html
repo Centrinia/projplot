@@ -93,13 +93,13 @@
 
                     float TOL = 1e-2;
                     grid.rgb = step(-TOL, -abs(p.yxz));
-                    grid.rgb += step(-TOL, -abs(p2.yxz)) * 0.5;
+                    grid.rgb += step(-TOL, -abs(p2.yxz)) * 0.05;
 
                     float TOL2 = 7e-3;
                     vec2 q = p.xy / p.z;
                     grid.gr += step(-TOL2, -abs(mod(q.xy+0.5,1.0)-0.5)) * 0.2;
                     vec2 q2 = p2.xy / p2.z;
-                    grid.gr += step(-TOL2, -abs(mod(q2.xy+0.5,1.0)-0.5)) * 0.1;
+                    grid.gr += step(-TOL2, -abs(mod(q2.xy+0.5,1.0)-0.5)) * 0.05;
 
                     gl_FragColor = vec4(y, y, y, 1.0) + grid;
 
@@ -120,14 +120,8 @@
     <body>
         <canvas id="canvas" width="1024" height="1024"></canvas>
         <p>
-            Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
-        </p>
-        <p>
-            Mode: <button id="mode-button">Affine</button>
-        </p>
-        <p>
             Equation:
-            <input type='text' id='equation-text' width='200'/>
+            <input type='text' id='equation-text' size='100'/>
             <br/>
             <select id='equation'>
                 <option value='x^2=y'>x^2=y</option>
@@ -139,6 +133,9 @@
                 <option value='x^3-3*x+2=y^2'>x^3-3*x+2=y^2</option>
                 <option value='x^3*y+y^3*z+z^3*x=0'>x^3*y+y^3*z+z^3*x=0</option>
             </select>
+        </p>
+        <p>
+            Mode: <button id="mode-button">Affine</button>
         </p>
         <p>
             Plane:
@@ -153,6 +150,9 @@
         </p>
         <p>
             Change of coordinates: <span id='quat'></span>
+        </p>
+        <p>
+            Drag the sphere to change the view. The mouse wheel alters the distance to the center with mouse wheel down moving the viewpoint closer. Switch between projective and affine modes. Select the equation on the dropdown menu. The red line is the x axis, the green line is the y axis, and the blue line is the line at infinity.
         </p>
     </body>
 </html>

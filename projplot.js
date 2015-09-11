@@ -283,11 +283,12 @@ PostfixParser.prototype.polynomial = function (tokens) {
             } else if(token['token'] == 'EQUALS') {
                 stack.push(o1.subtract(o2));
             } else if(token['token'] == 'POWER') {
-                /*if(!o2.isInteger()) {
+                var e = o2.getConstant();
+                if(!e || e % 1 !== 0) {
                     console.log('Exponent not an integer.');
                     return null;
-                }*/
-                stack.push(o1.power(o2['monomials'][0]['factors'][0]['value']));
+                }
+                stack.push(o1.power(e));
             }
         }
     });
@@ -444,6 +445,21 @@ Monomial.prototype.canon = function () {
     this.factors = f;
 };
 
+Monomial.prototype.getConstant = function () {
+    this.canon();
+    if(this.factors.length > 1) {
+        return null;
+    } else if(this.factors.length == 1) {
+        if(this.factors[0]['variable'] == '1') {
+            return this.factors[0]['value'];
+        } else {
+            return null;
+        }
+    } else {
+        return 1;
+    }
+}
+
 Monomial.prototype.multiply = function (b) {
     var c = new Monomial();
 
@@ -546,6 +562,23 @@ Polynomial.prototype.canon = function () {
     this.monomials = m;
 };
 
+/**
+ * Determine if this polynomial is a constant.
+ */
+Polynomial.prototype.getConstant = function () {
+    this.canon();
+    if(this.monomials.length > 1) {
+        return null;
+    } else if(this.monomials.length == 1) {
+        return this.monomials[0].getConstant();
+    } else {
+        return 0;
+    }
+}
+
+/**
+ * Add this polynomial with the argument.
+ */
 Polynomial.prototype.add = function (b) {
     var c = new Polynomial();
     c.monomials = this.monomials.slice().concat(b.monomials.slice());
@@ -616,7 +649,6 @@ Polynomial.prototype.toGLSL = function () {
     }
     
     for(var i=0;i<this.monomials.length;i++) {
-        console.log(degree - this.monomials[i].degree(),degree,this.monomials[i].degree());
         if(this.monomials[i].degree() < degree) {
             this.monomials[i] = this.monomials[i].multiply(Monomial.basisPower('z',degree-this.monomials[i].degree()));
         }
@@ -644,6 +676,7 @@ Polynomial.prototype.toString = function () {
     }
     return str;
 };
+
 function getMousecoord(event) {
     var elem = event.target || event.srcElement;
     var rect = elem.getBoundingClientRect();
@@ -912,12 +945,9 @@ window.onload = function () {
     };
 
     var changeEquation = function(mode, equation) {
-        console.log(equation);
         var lex = new Lexer(TOKENS);
         var lexResult = lex.lex(equation);
-        if(lexResult) {
-            console.log(lexResult);
-        } else {
+        if(!lexResult) {
             console.log('Could not lex.');
             return;
         }
@@ -927,7 +957,6 @@ window.onload = function () {
                     'token': 'TIMES',
                     'match': '*'
                 });
-        console.log(lexResult);
         var postfixResult = postfix.parse(lexResult);
         if(!postfixResult) {
             console.log('Can not parse.');
