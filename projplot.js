@@ -911,7 +911,7 @@ window.onload = function () {
     };
     //var rotationQuaternion = [0,0,0,1];
     var rotationQuaternion = [1,0,0,0];
-    var u_displacement = 3.0;
+    var u_displacement = 6.0;
 
     var sphereCenter = [0,0,0];
     var sphereRadius = 1.0;
